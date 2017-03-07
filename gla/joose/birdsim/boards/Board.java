@@ -22,11 +22,29 @@ import gla.joose.birdsim.pieces.Grain;
 import gla.joose.birdsim.pieces.Piece;
 
 
+
 /**
  * A generic board that can be used to display any piece.
  */
-public interface Board{
-
+public abstract class Board extends Observable implements Observer {
+    @SuppressWarnings("rawtypes")
+	private Vector[][] board;
+    protected Vector<Piece> allPieces = new Vector<Piece>();
+    private int[] selectedSquare;
+    private int rows;
+    private int columns;
+    private int defaultSpeed = 5;
+    private Board thisBoard;
+    private JPanel display;
+    protected boolean panelHasBeenResized = false;
+    
+    protected Random rand;
+    protected boolean scareBirds;
+    protected boolean starveBirds;
+    protected int noofbirds;
+    protected int noofgrains;
+    FlyBehaviour flyBehaviour;
+    StockDisplayBehaviour stockDisplayBehaviour;
 
 
     /**
@@ -39,7 +57,34 @@ public interface Board{
      * @param columns
      *        Desired number of columns.
      */
-
+    @SuppressWarnings("rawtypes")
+	public Board(int rows, int columns) {
+    	rand = new Random();
+        display = new DisplayPanel();
+        this.rows = rows;
+        this.columns = columns;
+        thisBoard = this;
+        board = new Vector[rows][columns];
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < columns; j++) {
+                board[i][j] = new Vector(1);
+            }
+        }
+        display.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent e) {
+                int row = yToRow(e.getY());
+                int column = xToColumn(e.getX());
+                selectedSquare = new int[] { row, column };
+                setChanged();
+                notifyObservers(selectedSquare);
+            }
+        });        
+        display.addComponentListener(new ComponentAdapter() {
+            public void componentResized(ComponentEvent arg0) {
+                panelHasBeenResized  = true;
+            }
+        });
+    }
     
     /**
      * Configures a board with specific set of behaviour;
@@ -47,7 +92,7 @@ public interface Board{
      * 
      * @param frame The JFrame on which the board will be created.
      */
-    void initBoard(JFrame frame);
+    public abstract void initBoard(JFrame frame);
     
     
     /**
@@ -55,7 +100,9 @@ public interface Board{
      * must be implemented by a subclass.
      * 
      */
-    void updateStockDisplay();
+    public void performUpdateStockDisplay() {
+        stockDisplayBehaviour.updateStockDisplay();
+    }
 
     
     /**
@@ -63,36 +110,71 @@ public interface Board{
      * This class is overridden when a different board behaviour is preferred
      * 
      */
-	void fly();
-
-    /**
+	public void performFly(){
+	    flyBehaviour.fly();
+	}
+	
+	/**
      * updates the number of birds and grains on the board.
      */
-	void updateStock();
+	public void updateStock(){
+		synchronized(allPieces){
+			noofbirds = 0;
+			noofgrains = 0;
+			for (int i=0;i< getAllPieces().size(); i++) {
+                Piece piece = getAllPieces().get(i);
+                if(piece instanceof Grain){
+                	noofgrains = noofgrains +1;
+                }
+                else if(piece instanceof Bird){
+                	noofbirds = noofbirds +1;
+                }
+			}
+			
+		}
+	}
 
+	public void setFlyBehaviour(FlyBehaviour fb) {
+	    flyBehaviour = fb;
+    }
 
+    public void setStockDisplayBehaviour(StockDisplayBehaviour sb) {
+	    stockDisplayBehaviour = sb;
+    }
+		
+	
     /**
      * Returns the JPanel on which this board is displayed.
      * 
      * @return The JPanel on which this Board is displayed.
      */
-    JPanel getJPanel();
+    public JPanel getJPanel() {
+        return display;
+    }
 
     /**
      * Returns the number of rows in this Board.
      * 
      * @return The number of rows.
      */
-    int getRows();
+    public int getRows() {
+        return rows;
+    }
 
     /**
      * Returns the number of columns in this Board.
      * 
      * @return The number of columns.
      */
-    int getColumns();
-
-    Vector<Piece> getAllPieces();
+    public int getColumns() {
+        return columns;
+    }
+    
+    public Vector<Piece> getAllPieces(){
+    	synchronized(allPieces){
+            return allPieces;
+        }
+    }
 
     /**
      * Returns the topmost piece at the given row and column in this Board, or
@@ -109,7 +191,12 @@ public interface Board{
      * @throws ArrayIndexOutOfBoundsException
      *         If the specified location does not exist.
      */
-    Piece getPiece(int row, int column);
+    public Piece getPiece(int row, int column) {
+        if (board[row][column].isEmpty()) {
+            return null;
+        }
+        return (Piece) board[row][column].lastElement();
+    }
 
     /**
      * Returns a (possibly empty) Stack of all the pieces in the given position.
@@ -125,7 +212,13 @@ public interface Board{
      *         If the specified location does not exist.
      */
     @SuppressWarnings({ "rawtypes", "unchecked" })
-	Stack getPieces(int row, int column);
+	public Stack getPieces(int row, int column) {
+        Stack pieces = new Stack();
+        for (Iterator iter = board[row][column].iterator(); iter.hasNext();) {
+            pieces.push(iter.next());
+        }
+        return pieces;
+    }
     
     /**
      * Returns <code>true</code> if the given row and column on this board
@@ -135,7 +228,9 @@ public interface Board{
      * @param column The column to examine.
      * @return <code>true</code> if this location is empty.
      */
-    boolean isEmpty(int row, int column);
+    public boolean isEmpty(int row, int column) {
+        return board[row][column].isEmpty();
+    }
 
     /**
      * Given x-y coordinates, finds and returns the topmost piece at that
@@ -152,7 +247,9 @@ public interface Board{
      * @throws ArrayIndexOutOfBoundsException
      *         If the specified location does not exist.
      */
-    Piece findPiece(int x, int y);
+    public Piece findPiece(int x, int y) {
+        return getPiece(yToRow(y), xToColumn(x));
+    }
 
     /**
      * Given an x coordinate, determines which column it is in.
@@ -161,7 +258,9 @@ public interface Board{
      *        A local x coordinate.
      * @return The number of the column containing the given x coordinate.
      */
-    int xToColumn(int x);
+    public int xToColumn(int x) {
+        return Math.min(columns - 1, (x * columns) / display.getWidth());
+    }
 
     /**
      * Given a y coordinate, determines which row it is in.
@@ -170,7 +269,9 @@ public interface Board{
      *        A local y coordinate.
      * @return The number of the row containing the given y coordinate.
      */
-    int yToRow(int y);
+    public int yToRow(int y) {
+        return Math.min(rows - 1, (y * rows) / display.getHeight());
+    }
 
     /**
      * Returns the X coordinate of the left side of cells in the given column of
@@ -180,7 +281,9 @@ public interface Board{
      *        A column number.
      * @return The X coordinate of the left side of that column.
      */
-    int columnToX(int columnNumber);
+    public int columnToX(int columnNumber) {
+        return (columnNumber * (display.getWidth() - 1)) / columns;
+    }
 
     /**
      * Returns the Y coordinate of the top side of cells in the given column of
@@ -190,7 +293,9 @@ public interface Board{
      *        A row number.
      * @return The Y coordinate of the top side of that row.
      *      */
-    public int rowToY(int rowNumber);
+    public int rowToY(int rowNumber) {
+        return (rowNumber * (display.getHeight() - 1)) / rows;
+    }
 
     /**
      * Places the given piece at the given location in this board.
@@ -208,12 +313,27 @@ public interface Board{
      *         If the specified location does not exist.
      */
     @SuppressWarnings("unchecked")
-	void place(Piece piece, int row, int column);
+	public void place(Piece piece, int row, int column) {
+        if (piece.getBoard() != null) {
+            throw new IllegalArgumentException("Piece " + piece + " is already on a board");
+        }
+        board[row][column].add(piece);
+        synchronized (allPieces) {
+            allPieces.add(piece);
+        }
+        piece.placeHelper(this, row, column);
+    }
     
     /**
      * Removes all Pieces from this Board.
      */
-    void clear();
+    public void clear() {
+    	synchronized (allPieces) {
+    		for (int i = allPieces.size() - 1; i >= 0; i--) {
+                remove (allPieces.get(i));
+            }
+		}
+    }
 
     /**
      * Removes the top piece at the given row and column on this Board.
@@ -225,10 +345,23 @@ public interface Board{
      * @throws ArrayIndexOutOfBoundsException
      *         If the specified location does not exist.
      */
-    Piece remove(int row, int column);
+    public Piece remove(int row, int column) {
+        Piece piece = getPiece(row, column);
+        if (piece == null) {
+            return null;
+        } else {
+            remove(piece);
+            return piece;
+        }
+    }
     
     @SuppressWarnings("unchecked")
-	void changePositionOnBoard(Piece piece, int oldRow, int oldColumn, int newRow, int newColumn);
+	public void changePositionOnBoard(Piece piece,
+                                         int oldRow, int oldColumn,
+                                         int newRow, int newColumn) {
+        board[oldRow][oldColumn].remove(piece);
+        board[newRow][newColumn].add(piece);
+    }
 
     /**
      * Removes this piece from the board. Does nothing if the piece
@@ -241,7 +374,17 @@ public interface Board{
      * @param column
      *        The column containing the piece.
      */
-    boolean remove(Piece piece);
+    public boolean remove(Piece piece) {
+        if (piece == null || piece.getBoard() != this) {
+            return false;
+        }
+        board[piece.getRow()][piece.getColumn()].remove(piece);
+        synchronized (allPieces) {
+            allPieces.remove(piece);
+        }
+        piece.removeHelper();
+        return true;
+    }
 
     /**
      * Ensures that the given piece will be drawn on top of any other pieces
@@ -250,7 +393,12 @@ public interface Board{
      * @param piece
      *        The piece to promote to the top.
      */
-    void moveToTop(Piece piece);
+    public void moveToTop(Piece piece) {
+        synchronized (allPieces) {
+            allPieces.remove(piece);
+            allPieces.add(piece);
+        }
+    }
 
     /**
      * Sets the default speed of movement for pieces on this board, in squares
@@ -260,7 +408,10 @@ public interface Board{
      * @param speed
      *        The default speed for pieces on this board.
      */
-    void setSpeed(int speed);
+    public void setSpeed(int speed) {
+        if (speed > 0)
+            defaultSpeed = speed;
+    }
 
     /**
      * Returns the default speed (in squares per second) of pieces on this
@@ -268,19 +419,25 @@ public interface Board{
      * 
      * @return The default speed for pieces on this board.
      */
-    int getSpeed();
+    public int getSpeed() {
+        return defaultSpeed;
+    }
 
     /**
      * Returns the current width, in pixels, of a single cell on this Board. The
      * value will change if this Board is resized.
      */
-    int getCellWidth();
+    public int getCellWidth() {
+        return display.getWidth() / columns;
+    }
 
     /**
      * @return Returns the current height, in pixels, of a single cell on this
      *         Board. The value will change if this Board is resized.
      */
-    int getCellHeight();
+    public int getCellHeight() {
+        return display.getHeight() / rows;
+    }
 
     /**
      * Determines whether the given row and column denote a legal position on
@@ -293,7 +450,13 @@ public interface Board{
      * @return <code>true</code> if the given row and column number represent
      *         a valid location on this board
      */
-    boolean isLegalPosition(int row, int column);
+    public boolean isLegalPosition(int row, int column) {
+        if (row < 0 || row >= rows)
+            return false;
+        if (column < 0 || column >= columns)
+            return false;
+        return true;
+    }
     
     /**
      * Redraws this Board whenever a Piece is modified.
@@ -305,7 +468,15 @@ public interface Board{
      *        Not used.
      */
     @SuppressWarnings("unused")
-	void update(Observable changedPiece, Object rectangle);
+	public void update(Observable changedPiece, Object rectangle) {
+        Piece piece = (Piece)changedPiece;
+        if (rectangle == null) {
+            display.repaint();
+        } else {
+            Rectangle r = (Rectangle)rectangle;
+            display.repaint(r.x, r.y, r.width, r.height);
+        }
+    }
     
     /**
      * Paints th1s board itself, not including the pieces.
@@ -313,20 +484,109 @@ public interface Board{
      * @param g
      *        The Graphics context on which this board is painted.
      */
-    void paint(Graphics g);
+    public void paint(Graphics g) {
+        int height = display.getHeight();
+        int width = display.getWidth();
+        int x, y;
+        Color oldColor = g.getColor();
+        Color backgroundColor = Color.white;
+        Color lineColor = new Color(192, 192, 255);
+
+        // Fill background with solid color
+        g.setColor(backgroundColor);
+        g.fillRect(0, 0, display.getWidth(), display.getHeight());
+
+        // Paint vertical lines
+        g.setColor(lineColor);
+        for (int i = 0; i <= columns; i++) {
+            x = columnToX(i);
+            g.drawLine(x, 0, x, height);
+        }
+        // Paint horizontal lines
+        for (int i = 0; i <= rows; i++) {
+            y = rowToY(i);
+            g.drawLine(0, y, width, y);
+        }
+        g.setColor(oldColor);
+    }
 
 
     /**
      * Displays the board contents (for debugging).
      */
     @SuppressWarnings("rawtypes")
-	void dump();
+	protected void dump() {
+        System.out.println("----------- Board is " + rows + " rows, "
+                           + columns + " columns.");
+        for (int i = 0; i < rows; i++) {
+            for (int j = 0; j < columns; j++) {
+                if (!board[i][j].isEmpty()) {
+                    System.out.println("Board [" + i + "][" + j + "] contains:");
+                    for (Iterator iter = board[i][j].iterator(); iter.hasNext();) {
+                        Piece piece = (Piece) iter.next();
+                        System.out.println("    " + piece.toString());
+                    }
+                }
+            }
+        }
+        synchronized (allPieces) {
+            System.out.println("Vector allPieces:");
+            for (Iterator<Piece> iter = allPieces.iterator(); iter.hasNext();) {
+                Piece piece = iter.next();
+                System.out.println("    " + piece.toString());
+            }
+//            System.out.println("Selected piece = " + selectedPiece);
+            System.out.println("----------- Pieces: ");
+            for (Iterator<Piece> iter = allPieces.iterator(); iter.hasNext();) {
+                Piece piece = iter.next();
+                System.out.print(piece.toString());
+                piece.dump();
+            }
+        }
+    }
     
+//  -------------------------------------------------- inner class DisplayPanel
+    
+    class DisplayPanel extends JPanel {
+		private static final long serialVersionUID = 1L;
+
+		/**
+         * Repaints this Board and everything on it.
+         * 
+         * @param g
+         *        The Graphics context on which this board is painted.
+         */
+        public void update(Graphics g) {
+            paint(g);
+        }
+
+        /**
+         * Repaints this Board and everything on it.
+         * 
+         * @param g
+         *        The Graphics context on which this board is painted.
+         */
+        public void paint(Graphics g) {
+            // Paint the board
+            thisBoard.paint(g);
+            // Paint the pieces
+            synchronized (allPieces) {
+                for (Iterator<Piece> iter = allPieces.iterator(); iter.hasNext();) {
+                    Piece piece = iter.next();
+                    piece.paint(g, piece.getRectangle());
+                }
+            }
+        }
+    } // end inner class DisplayPanel
 
     /**
      * @return
      */
-    int[] getSelectedSquare();
+    public int[] getSelectedSquare() {
+        return selectedSquare;
+    }
     
-    void setSelectedSquare(int[] selection);
+    public void setSelectedSquare(int[] selection) {
+        selectedSquare = selection;
+    }
 }

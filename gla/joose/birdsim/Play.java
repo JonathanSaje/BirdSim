@@ -20,10 +20,10 @@ public class Play extends JFrame {
 		
 //		Board forageBoard = new StaticForageBoard(50,50);
 //		forageBoard.initBoard(play);
-		Board forageBoard = new MovingForageBoard(50,50);
-		forageBoard.initBoard(play);
-//		Board simpleBoard = new FlockBoard(50,50);
-//		simpleBoard.initBoard(play);
+//		Board forageBoard = new MovingForageBoard(50,50);
+//		forageBoard.initBoard(play);
+		Board simpleBoard = new FlockBoard(50,50);
+		simpleBoard.initBoard(play);
 
 	}
 
